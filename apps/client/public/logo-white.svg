@@ -1,0 +1,20 @@
+<svg width="100" height="100" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Xynoos Vertex — Inverted Logo Symbol (White on Dark) -->
+
+  <!-- Plane 1 — Top -->
+  <path d="M50 10 L62 38 L50 46 L38 38 Z" fill="#ffffff"/>
+
+  <!-- Plane 2 — Bottom-Left -->
+  <path d="M16.5 72 L40 44 L50 50 L42 62 Z" fill="#ffffff"/>
+
+  <!-- Plane 3 — Bottom-Right -->
+  <path d="M83.5 72 L58 62 L50 50 L60 44 Z" fill="#ffffff"/>
+
+  <!-- Vertex node -->
+  <circle cx="50" cy="50" r="3.5" fill="#ffffff"/>
+
+  <!-- Connection lines -->
+  <line x1="50" y1="14" x2="50" y2="46" stroke="#ffffff" stroke-width="1.2" opacity="0.3"/>
+  <line x1="19" y1="70" x2="47" y2="49" stroke="#ffffff" stroke-width="1.2" opacity="0.3"/>
+  <line x1="81" y1="70" x2="53" y2="49" stroke="#ffffff" stroke-width="1.2" opacity="0.3"/>
+</svg>
