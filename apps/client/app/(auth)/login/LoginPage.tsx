@@ -30,7 +30,7 @@ export function LoginPage() {
             if (!res.ok) throw new Error(data.message ?? "Login failed.");
             localStorage.setItem("accessToken", data.accessToken);
             localStorage.setItem("user", JSON.stringify(data.user));
-            router.push("/social");
+            router.push("/feed");
         } catch (err: unknown) {
             setError(err instanceof Error ? err.message : "Something went wrong.");
         } finally {
