@@ -24,11 +24,12 @@ export function LoginPage() {
             const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/login`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
+                credentials: "include",
                 body: JSON.stringify({ email: form.email, password: form.password }),
             });
             const data = await res.json();
             if (!res.ok) throw new Error(data.message ?? "Login failed.");
-            localStorage.setItem("accessToken", data.accessToken);
+            // user info only — JWT is in HttpOnly cookie, not accessible in JS
             localStorage.setItem("user", JSON.stringify(data.user));
             router.push("/feed");
         } catch (err: unknown) {

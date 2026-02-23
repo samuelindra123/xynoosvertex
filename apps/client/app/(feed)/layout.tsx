@@ -71,13 +71,18 @@ export default function FeedLayout({ children }: { children: React.ReactNode }) 
     const dropdownRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
-        const token = localStorage.getItem("accessToken");
-        const stored = localStorage.getItem("user");
-        if (!token || !stored) {
-            router.replace("/login");
-            return;
-        }
-        try { setUser(JSON.parse(stored)); } catch { router.replace("/login"); }
+        // Verify session via HttpOnly cookie — no token in JS memory
+        fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/me`, {
+            credentials: "include",
+        })
+            .then(async (res) => {
+                if (!res.ok) throw new Error("Unauthorized");
+                const data = await res.json();
+                setUser(data.user);
+                // keep non-sensitive user info for UI
+                localStorage.setItem("user", JSON.stringify(data.user));
+            })
+            .catch(() => router.replace("/login"));
     }, [router]);
 
     useEffect(() => {
@@ -90,8 +95,11 @@ export default function FeedLayout({ children }: { children: React.ReactNode }) 
         return () => document.removeEventListener("mousedown", handler);
     }, []);
 
-    const handleLogout = () => {
-        localStorage.removeItem("accessToken");
+    const handleLogout = async () => {
+        await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/logout`, {
+            method: "POST",
+            credentials: "include",
+        });
         localStorage.removeItem("user");
         router.push("/login");
     };
