@@ -1,17 +1,20 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import Link from "next/link";
 import { VertexMark } from "@/components/system/VertexLogo";
 
 export function RegisterPage() {
+    const router = useRouter();
     const [form, setForm] = useState({ name: "", email: "", password: "", confirm: "" });
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
+    const [success, setSuccess] = useState("");
     const [agreed, setAgreed] = useState(false);
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (form.password !== form.confirm) {
             setError("Passwords do not match.");
@@ -23,10 +26,22 @@ export function RegisterPage() {
         }
         setLoading(true);
         setError("");
-        setTimeout(() => {
+        setSuccess("");
+
+        try {
+            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/register`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ name: form.name, email: form.email, password: form.password }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.message ?? "Registration failed.");
+            setSuccess(data.message);
+        } catch (err: unknown) {
+            setError(err instanceof Error ? err.message : "Something went wrong.");
+        } finally {
             setLoading(false);
-            setError("This is a demo. Registration is coming soon.");
-        }, 1500);
+        }
     };
 
     return (
@@ -176,6 +191,12 @@ export function RegisterPage() {
                         {error && (
                             <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} className="p-3 rounded-lg border border-amber-500/20 bg-amber-500/[0.06]">
                                 <p className="text-amber-400 text-[12px] text-center">{error}</p>
+                            </motion.div>
+                        )}
+
+                        {success && (
+                            <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} className="p-3 rounded-lg border border-emerald-500/20 bg-emerald-500/[0.06]">
+                                <p className="text-emerald-400 text-[12px] text-center">{success}</p>
                             </motion.div>
                         )}
 

@@ -1,23 +1,41 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import Link from "next/link";
 import { VertexMark } from "@/components/system/VertexLogo";
 
 export function LoginPage() {
+    const router = useRouter();
+    const searchParams = useSearchParams();
     const [form, setForm] = useState({ email: "", password: "" });
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const verified = searchParams.get("verified") === "true";
+
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setLoading(true);
         setError("");
-        setTimeout(() => {
+
+        try {
+            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/login`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ email: form.email, password: form.password }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.message ?? "Login failed.");
+            localStorage.setItem("accessToken", data.accessToken);
+            localStorage.setItem("user", JSON.stringify(data.user));
+            router.push("/social");
+        } catch (err: unknown) {
+            setError(err instanceof Error ? err.message : "Something went wrong.");
+        } finally {
             setLoading(false);
-            setError("This is a demo. Authentication is coming soon.");
-        }, 1500);
+        }
     };
 
     return (
@@ -130,6 +148,11 @@ export function LoginPage() {
                     </div>
 
                     <form onSubmit={handleSubmit} className="space-y-4">
+                        {verified && (
+                            <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} className="p-3 rounded-lg border border-emerald-500/20 bg-emerald-500/[0.06]">
+                                <p className="text-emerald-400 text-[12px] text-center">Email verified! You can now sign in.</p>
+                            </motion.div>
+                        )}
                         <div>
                             <label className="block text-[12px] font-medium text-neutral-500 uppercase tracking-[0.1em] mb-2">Email</label>
                             <input type="email" required value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="w-full h-11 px-4 bg-white/[0.03] border border-white/[0.08] rounded-xl text-[14px] text-white placeholder:text-neutral-600 focus:border-blue-500/30 focus:bg-white/[0.05] focus:outline-none transition-all" placeholder="you@company.com" />

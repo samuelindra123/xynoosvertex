@@ -9,14 +9,26 @@ export function ForgotPasswordPage() {
     const [email, setEmail] = useState("");
     const [loading, setLoading] = useState(false);
     const [sent, setSent] = useState(false);
+    const [error, setError] = useState("");
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setLoading(true);
-        setTimeout(() => {
-            setLoading(false);
+        setError("");
+        try {
+            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/forgot-password`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ email }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.message ?? "Something went wrong.");
             setSent(true);
-        }, 1500);
+        } catch (err: unknown) {
+            setError(err instanceof Error ? err.message : "Something went wrong.");
+        } finally {
+            setLoading(false);
+        }
     };
 
     return (
@@ -85,9 +97,12 @@ export function ForgotPasswordPage() {
                                     {loading ? <div className="w-4 h-4 border-2 border-neutral-400 border-t-neutral-950 rounded-full animate-spin" /> : "Send Reset Link"}
                                 </button>
 
-                                <p className="text-center text-[12px] text-neutral-600">
-                                    This is a demo. No email will actually be sent.
-                                </p>
+                                {error && (
+                                    <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} className="p-3 rounded-lg border border-amber-500/20 bg-amber-500/[0.06]">
+                                        <p className="text-amber-400 text-[12px] text-center">{error}</p>
+                                    </motion.div>
+                                )}
+
                             </motion.form>
                         ) : (
                             <motion.div key="success" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
