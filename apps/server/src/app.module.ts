@@ -7,6 +7,7 @@ import { AppService } from './app.service.js';
 import { AuthModule } from './auth/auth.module.js';
 import { MailModule } from './mail/mail.module.js';
 import { ProfileModule } from './profile/profile.module.js';
+import { PostsModule } from './posts/posts.module.js';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { ProfileModule } from './profile/profile.module.js';
     MailModule,
     AuthModule,
     ProfileModule,
+    PostsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

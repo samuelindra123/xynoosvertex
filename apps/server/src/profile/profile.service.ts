@@ -5,6 +5,8 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { eq, and, ne } from 'drizzle-orm';
+import { Client, Storage, ID } from 'node-appwrite';
+import { InputFile } from 'node-appwrite/file';
 import { db } from '../db/index.js';
 import { users } from '../db/schema.js';
 import { UpdateProfileDto } from './dto/update-profile.dto.js';
@@ -12,7 +14,20 @@ import { UpdateProfileDto } from './dto/update-profile.dto.js';
 @Injectable()
 export class ProfileService {
   private readonly ALLOWED_MIME = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
-  private readonly MAX_SIZE = 5 * 1024 * 1024; // 5 MB
+  private readonly MAX_SIZE = 5 * 1024 * 1024;
+
+  private readonly storage: Storage;
+  private readonly bucketId: string;
+
+  constructor() {
+    const client = new Client()
+      .setEndpoint(process.env.APPWRITE_ENDPOINT!)
+      .setProject(process.env.APPWRITE_PROJECT_ID!)
+      .setKey(process.env.APPWRITE_API_KEY!);
+
+    this.storage = new Storage(client);
+    this.bucketId = process.env.APPWRITE_BUCKET_ID!;
+  }
 
   async getProfile(userId: string) {
     const [user] = await db
@@ -24,6 +39,7 @@ export class ProfileService {
         bio: users.bio,
         website: users.website,
         avatarUrl: users.avatarUrl,
+        postsCount: users.postsCount,
         createdAt: users.createdAt,
       })
       .from(users)
@@ -74,8 +90,27 @@ export class ProfileService {
       throw new BadRequestException('File size must be under 5 MB');
     }
 
-    // Store local path — swap for Appwrite URL later
-    const avatarUrl = `/uploads/avatars/${file.filename}`;
+    // Delete old Appwrite file if exists
+    const [current] = await db
+      .select({ avatarUrl: users.avatarUrl })
+      .from(users)
+      .where(eq(users.id, userId));
+
+    if (current?.avatarUrl) {
+      const match = current.avatarUrl.match(/files\/([^/]+)\/view/);
+      if (match) {
+        await this.storage.deleteFile(this.bucketId, match[1]).catch(() => null);
+      }
+    }
+
+    // Upload to Appwrite
+    const uploaded = await this.storage.createFile(
+      this.bucketId,
+      ID.unique(),
+      InputFile.fromBuffer(file.buffer, file.originalname),
+    );
+
+    const avatarUrl = `${process.env.APPWRITE_ENDPOINT}/storage/buckets/${this.bucketId}/files/${uploaded.$id}/view?project=${process.env.APPWRITE_PROJECT_ID}`;
 
     const [updated] = await db
       .update(users)

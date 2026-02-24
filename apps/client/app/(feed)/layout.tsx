@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
+import { AnimatePresence } from "framer-motion";
 import { VertexMark } from "@/components/system/VertexLogo";
+import { NewPostModal } from "./NewPostModal";
 
 const NAV_ITEMS = [
     {
@@ -14,7 +16,6 @@ const NAV_ITEMS = [
         ),
         label: "Feed",
         href: "/feed",
-        active: true,
     },
     {
         icon: (
@@ -66,12 +67,13 @@ const NAV_ITEMS = [
 
 export default function FeedLayout({ children }: { children: React.ReactNode }) {
     const router = useRouter();
-    const [user, setUser] = useState<{ name: string; email: string } | null>(null);
+    const pathname = usePathname();
+    const [user, setUser] = useState<{ name: string; email: string; avatarUrl?: string } | null>(null);
     const [dropdownOpen, setDropdownOpen] = useState(false);
+    const [newPostOpen, setNewPostOpen] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
-        // Verify session via HttpOnly cookie — no token in JS memory
         fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/me`, {
             credentials: "include",
         })
@@ -79,11 +81,33 @@ export default function FeedLayout({ children }: { children: React.ReactNode }) 
                 if (!res.ok) throw new Error("Unauthorized");
                 const data = await res.json();
                 setUser(data.user);
-                // keep non-sensitive user info for UI
                 localStorage.setItem("user", JSON.stringify(data.user));
             })
             .catch(() => router.replace("/login"));
+
+        // Also fetch avatar from profile
+        fetch(`${process.env.NEXT_PUBLIC_API_URL}/profile/me`, {
+            credentials: "include",
+        })
+            .then(async (res) => {
+                if (!res.ok) return;
+                const data = await res.json();
+                setUser(prev => prev ? { ...prev, avatarUrl: data.avatarUrl } : prev);
+            })
+            .catch(() => null);
     }, [router]);
+
+    // Re-fetch avatar when profile is updated
+    useEffect(() => {
+        const handler = () => {
+            fetch(`${process.env.NEXT_PUBLIC_API_URL}/profile/me`, { credentials: "include" })
+                .then(r => r.ok ? r.json() : null)
+                .then(data => data && setUser(prev => prev ? { ...prev, avatarUrl: data.avatarUrl } : prev))
+                .catch(() => null);
+        };
+        window.addEventListener("profile:updated", handler);
+        return () => window.removeEventListener("profile:updated", handler);
+    }, []);
 
     useEffect(() => {
         const handler = (e: MouseEvent) => {
@@ -121,12 +145,16 @@ export default function FeedLayout({ children }: { children: React.ReactNode }) 
 
                 {/* Nav */}
                 <nav className="flex-1 flex flex-col gap-1">
-                    {NAV_ITEMS.map((item) => (
+                    {NAV_ITEMS.map((item) => {
+                        const isActive = item.href === "/feed"
+                            ? pathname === "/feed"
+                            : pathname.startsWith(item.href);
+                        return (
                         <Link
                             key={item.label}
                             href={item.href}
                             className={`relative flex items-center gap-3.5 px-3 py-2.5 rounded-xl transition-all group
-                                ${item.active
+                                ${isActive
                                     ? "bg-white/[0.06] text-white"
                                     : "text-neutral-500 hover:text-white hover:bg-white/[0.04]"
                                 }`}
@@ -142,10 +170,13 @@ export default function FeedLayout({ children }: { children: React.ReactNode }) 
                                 <span className="xl:hidden absolute top-1 right-1 w-2 h-2 bg-emerald-500 rounded-full" />
                             )}
                         </Link>
-                    ))}
+                        );
+                    })}
 
                     {/* Post button */}
-                    <button className="mt-4 flex items-center justify-center xl:justify-start gap-3 px-3 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-semibold text-[14px] transition-all">
+                    <button
+                        onClick={() => setNewPostOpen(true)}
+                        className="mt-4 flex items-center justify-center xl:justify-start gap-3 px-3 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-semibold text-[14px] transition-all">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14M5 12h14" /></svg>
                         <span className="hidden xl:block">New Post</span>
                     </button>
@@ -157,8 +188,11 @@ export default function FeedLayout({ children }: { children: React.ReactNode }) 
                         onClick={() => setDropdownOpen(!dropdownOpen)}
                         className="w-full flex items-center gap-3 px-2 xl:px-3 py-2.5 rounded-xl hover:bg-white/[0.04] transition-all"
                     >
-                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-emerald-500/40 to-blue-500/40 border border-white/10 flex items-center justify-center text-[12px] font-bold text-white flex-shrink-0">
-                            {initials}
+                        <div className="w-8 h-8 rounded-full border border-white/10 flex items-center justify-center text-[12px] font-bold text-white flex-shrink-0 overflow-hidden bg-gradient-to-br from-emerald-500/40 to-blue-500/40">
+                            {user?.avatarUrl
+                                ? <img src={user.avatarUrl} alt={user.name} className="w-full h-full object-cover" />
+                                : initials
+                            }
                         </div>
                         <div className="hidden xl:block text-left min-w-0">
                             <div className="text-[13px] font-medium text-white truncate">{user?.name ?? "..."}</div>
@@ -189,13 +223,32 @@ export default function FeedLayout({ children }: { children: React.ReactNode }) 
 
             {/* ── Mobile Bottom Nav ── */}
             <nav className="md:hidden fixed bottom-0 left-0 right-0 border-t border-white/[0.05] bg-[#080808]/95 backdrop-blur-md flex items-center justify-around px-4 py-3 z-40">
-                {NAV_ITEMS.slice(0, 5).map((item) => (
-                    <Link key={item.label} href={item.href} className={`relative flex flex-col items-center gap-1 ${item.active ? "text-white" : "text-neutral-600"}`}>
+                {NAV_ITEMS.slice(0, 5).map((item) => {
+                    const isActive = item.href === "/feed"
+                        ? pathname === "/feed"
+                        : pathname.startsWith(item.href);
+                    return (
+                    <Link key={item.label} href={item.href} className={`relative flex flex-col items-center gap-1 ${isActive ? "text-white" : "text-neutral-600"}`}>
                         {item.icon}
                         {item.badge && <span className="absolute -top-1 -right-1 w-2 h-2 bg-emerald-500 rounded-full" />}
                     </Link>
-                ))}
+                    );
+                })}
             </nav>
+
+            {/* New Post Modal */}
+            <AnimatePresence>
+                {newPostOpen && (
+                    <NewPostModal
+                        onClose={() => setNewPostOpen(false)}
+                        onPosted={() => {
+                            setNewPostOpen(false);
+                            // Dispatch custom event so FeedPage can refresh
+                            window.dispatchEvent(new CustomEvent("feed:refresh"));
+                        }}
+                    />
+                )}
+            </AnimatePresence>
         </div>
     );
 }
