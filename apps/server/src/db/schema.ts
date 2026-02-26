@@ -27,6 +27,7 @@ export const posts = pgTable('posts', {
   mediaUrl: varchar('media_url', { length: 1024 }),
   mediaType: varchar('media_type', { length: 20 }), // 'image' | 'video'
   likesCount: integer('likes_count').default(0).notNull(),
+  commentsCount: integer('comments_count').default(0).notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
@@ -38,7 +39,24 @@ export const postLikes = pgTable('post_likes', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
+export const comments = pgTable('comments', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  postId: uuid('post_id').notNull().references(() => posts.id, { onDelete: 'cascade' }),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  content: text('content').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+export const savedPosts = pgTable('saved_posts', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  postId: uuid('post_id').notNull().references(() => posts.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 export type Post = typeof posts.$inferSelect;
 export type PostLike = typeof postLikes.$inferSelect;
+export type Comment = typeof comments.$inferSelect;
+export type SavedPost = typeof savedPosts.$inferSelect;

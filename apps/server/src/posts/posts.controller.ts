@@ -38,7 +38,13 @@ export class PostsController {
   @Get('me')
   getMyPosts(@Req() req: Request, @Query('page') page?: string) {
     const user = req.user as { id: string };
-    return this.postsService.getUserPosts(user.id, page ? parseInt(page) : 1);
+    return this.postsService.getUserPosts(user.id, user.id, page ? parseInt(page) : 1);
+  }
+
+  @Get('saved')
+  getSaved(@Req() req: Request) {
+    const user = req.user as { id: string };
+    return this.postsService.getSavedPosts(user.id);
   }
 
   @Get()
@@ -51,6 +57,29 @@ export class PostsController {
   toggleLike(@Req() req: Request, @Param('id') postId: string) {
     const user = req.user as { id: string };
     return this.postsService.toggleLike(user.id, postId);
+  }
+
+  @Post(':id/save')
+  toggleSave(@Req() req: Request, @Param('id') postId: string) {
+    const user = req.user as { id: string };
+    return this.postsService.toggleSave(user.id, postId);
+  }
+
+  @Get(':id/comments')
+  getComments(@Param('id') postId: string) {
+    return this.postsService.getComments(postId);
+  }
+
+  @Post(':id/comments')
+  addComment(@Req() req: Request, @Param('id') postId: string, @Body() body: { content: string }) {
+    const user = req.user as { id: string };
+    return this.postsService.addComment(user.id, postId, body.content);
+  }
+
+  @Delete(':id/comments/:commentId')
+  deleteComment(@Req() req: Request, @Param('commentId') commentId: string) {
+    const user = req.user as { id: string };
+    return this.postsService.deleteComment(user.id, commentId);
   }
 
   @Delete(':id')

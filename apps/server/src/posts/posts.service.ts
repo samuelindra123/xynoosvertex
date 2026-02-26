@@ -8,7 +8,7 @@ import { eq, and, desc, sql } from 'drizzle-orm';
 import { Client, Storage, ID } from 'node-appwrite';
 import { InputFile } from 'node-appwrite/file';
 import { db } from '../db/index.js';
-import { posts, postLikes, users } from '../db/schema.js';
+import { posts, postLikes, users, comments, savedPosts } from '../db/schema.js';
 import { CreatePostDto } from './dto/create-post.dto.js';
 
 @Injectable()
@@ -66,7 +66,7 @@ export class PostsService {
       .select({
         id: posts.id, content: posts.content, tags: posts.tags,
         mediaUrl: posts.mediaUrl, mediaType: posts.mediaType,
-        likesCount: posts.likesCount, createdAt: posts.createdAt,
+        likesCount: posts.likesCount, commentsCount: posts.commentsCount, createdAt: posts.createdAt,
         userId: posts.userId, userName: users.name,
         userAlias: users.alias, userAvatarUrl: users.avatarUrl,
       })
@@ -78,11 +78,15 @@ export class PostsService {
     const likedRows = await db.select({ postId: postLikes.postId }).from(postLikes).where(eq(postLikes.userId, userId));
     const likedSet = new Set(likedRows.map(r => r.postId));
 
+    const savedIds = await this.getSavedPostIds(userId);
+    const savedSet = new Set(savedIds);
+
     return rows.map(r => ({
       id: r.id, content: r.content, tags: r.tags,
       mediaUrl: r.mediaUrl, mediaType: r.mediaType,
-      likesCount: r.likesCount, createdAt: r.createdAt,
+      likesCount: r.likesCount, commentsCount: r.commentsCount, createdAt: r.createdAt,
       likedByMe: likedSet.has(r.id),
+      savedByMe: savedSet.has(r.id),
       user: { id: r.userId, name: r.userName, alias: r.userAlias, avatarUrl: r.userAvatarUrl },
     }));
   }
@@ -102,19 +106,36 @@ export class PostsService {
     }
   }
 
-  async getUserPosts(userId: string, page = 1, limit = 30) {
+  async getUserPosts(userId: string, requestingUserId: string, page = 1, limit = 30) {
     const offset = (page - 1) * limit;
     const rows = await db
       .select({
         id: posts.id, content: posts.content, tags: posts.tags,
         mediaUrl: posts.mediaUrl, mediaType: posts.mediaType,
-        likesCount: posts.likesCount, createdAt: posts.createdAt,
+        likesCount: posts.likesCount, commentsCount: posts.commentsCount, createdAt: posts.createdAt,
+        userId: posts.userId, userName: users.name,
+        userAlias: users.alias, userAvatarUrl: users.avatarUrl,
       })
       .from(posts)
+      .innerJoin(users, eq(posts.userId, users.id))
       .where(eq(posts.userId, userId))
       .orderBy(desc(posts.createdAt))
       .limit(limit).offset(offset);
-    return rows;
+
+    const likedRows = await db.select({ postId: postLikes.postId }).from(postLikes).where(eq(postLikes.userId, requestingUserId));
+    const likedSet = new Set(likedRows.map(r => r.postId));
+
+    const savedIds = await this.getSavedPostIds(requestingUserId);
+    const savedSet = new Set(savedIds);
+
+    return rows.map(r => ({
+      id: r.id, content: r.content, tags: r.tags,
+      mediaUrl: r.mediaUrl, mediaType: r.mediaType,
+      likesCount: r.likesCount, commentsCount: r.commentsCount, createdAt: r.createdAt,
+      likedByMe: likedSet.has(r.id),
+      savedByMe: savedSet.has(r.id),
+      user: { id: r.userId, name: r.userName, alias: r.userAlias, avatarUrl: r.userAvatarUrl },
+    }));
   }
 
   async deletePost(userId: string, postId: string) {
@@ -128,5 +149,77 @@ export class PostsService {
     await db.delete(posts).where(eq(posts.id, postId));
     await db.update(users).set({ postsCount: sql`GREATEST(${users.postsCount} - 1, 0)` }).where(eq(users.id, userId));
     return { deleted: true };
+  }
+
+  // ── Comments ──────────────────────────────────────────────────────────────
+
+  async getComments(postId: string) {
+    const rows = await db
+      .select({
+        id: comments.id, content: comments.content, createdAt: comments.createdAt,
+        userId: comments.userId,
+        userName: users.name, userAlias: users.alias, userAvatarUrl: users.avatarUrl,
+      })
+      .from(comments)
+      .innerJoin(users, eq(comments.userId, users.id))
+      .where(eq(comments.postId, postId))
+      .orderBy(desc(comments.createdAt));
+    return rows.map(r => ({
+      id: r.id, content: r.content, createdAt: r.createdAt,
+      user: { id: r.userId, name: r.userName, alias: r.userAlias, avatarUrl: r.userAvatarUrl },
+    }));
+  }
+
+  async addComment(userId: string, postId: string, content: string) {
+    const [post] = await db.select({ id: posts.id }).from(posts).where(eq(posts.id, postId));
+    if (!post) throw new NotFoundException('Post not found');
+    const [comment] = await db.insert(comments).values({ postId, userId, content }).returning();
+    await db.update(posts).set({ commentsCount: sql`${posts.commentsCount} + 1` }).where(eq(posts.id, postId));
+    const [u] = await db.select({ name: users.name, alias: users.alias, avatarUrl: users.avatarUrl }).from(users).where(eq(users.id, userId));
+    return { ...comment, user: { id: userId, ...u } };
+  }
+
+  async deleteComment(userId: string, commentId: string) {
+    const [c] = await db.select().from(comments).where(eq(comments.id, commentId));
+    if (!c) throw new NotFoundException('Comment not found');
+    if (c.userId !== userId) throw new ForbiddenException('Not your comment');
+    await db.delete(comments).where(eq(comments.id, commentId));
+    await db.update(posts).set({ commentsCount: sql`GREATEST(${posts.commentsCount} - 1, 0)` }).where(eq(posts.id, c.postId));
+    return { deleted: true };
+  }
+
+  // ── Saved Posts ───────────────────────────────────────────────────────────
+
+  async toggleSave(userId: string, postId: string) {
+    const [post] = await db.select({ id: posts.id }).from(posts).where(eq(posts.id, postId));
+    if (!post) throw new NotFoundException('Post not found');
+    const [existing] = await db.select().from(savedPosts).where(and(eq(savedPosts.postId, postId), eq(savedPosts.userId, userId)));
+    if (existing) {
+      await db.delete(savedPosts).where(eq(savedPosts.id, existing.id));
+      return { saved: false };
+    } else {
+      await db.insert(savedPosts).values({ postId, userId });
+      return { saved: true };
+    }
+  }
+
+  async getSavedPosts(userId: string) {
+    const rows = await db
+      .select({
+        id: posts.id, content: posts.content, tags: posts.tags,
+        mediaUrl: posts.mediaUrl, mediaType: posts.mediaType,
+        likesCount: posts.likesCount, commentsCount: posts.commentsCount, createdAt: posts.createdAt,
+        savedAt: savedPosts.createdAt,
+      })
+      .from(savedPosts)
+      .innerJoin(posts, eq(savedPosts.postId, posts.id))
+      .where(eq(savedPosts.userId, userId))
+      .orderBy(desc(savedPosts.createdAt));
+    return rows;
+  }
+
+  async getSavedPostIds(userId: string): Promise<string[]> {
+    const rows = await db.select({ postId: savedPosts.postId }).from(savedPosts).where(eq(savedPosts.userId, userId));
+    return rows.map(r => r.postId);
   }
 }

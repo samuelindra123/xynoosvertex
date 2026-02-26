@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { PostViewer, type ViewerPost } from "../../PostViewer";
 
 interface PostItem {
     id: string;
@@ -10,7 +11,11 @@ interface PostItem {
     mediaUrl: string | null;
     mediaType: string | null;
     likesCount: number;
+    commentsCount: number;
+    likedByMe: boolean;
+    savedByMe: boolean;
     createdAt: string;
+    user: { id: string; name: string; alias: string | null; avatarUrl: string | null };
 }
 
 interface Profile {
@@ -26,7 +31,7 @@ interface Profile {
 }
 
 const API = process.env.NEXT_PUBLIC_API_URL;
-const TABS = ["Posts", "Replies", "Media", "Likes"] as const;
+const TABS = ["Posts", "Saved", "Media", "Likes"] as const;
 
 function Avatar({ profile, size = 96 }: { profile: Profile | null; size?: number }) {
     const initials = profile?.name?.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase() ?? "??";
@@ -183,8 +188,9 @@ export function ProfilePage() {
     const [activeTab, setActiveTab] = useState<typeof TABS[number]>("Posts");
     const [editOpen, setEditOpen] = useState(false);
     const [myPosts, setMyPosts] = useState<PostItem[]>([]);
+    const [savedPosts, setSavedPosts] = useState<PostItem[]>([]);
     const [postsLoading, setPostsLoading] = useState(false);
-    const [selectedPost, setSelectedPost] = useState<PostItem | null>(null);
+    const [selectedPost, setSelectedPost] = useState<ViewerPost | null>(null);
 
     useEffect(() => {
         fetch(`${API}/profile/me`, { credentials: "include" })
@@ -194,12 +200,19 @@ export function ProfilePage() {
     }, []);
 
     useEffect(() => {
-        if (activeTab !== "Posts") return;
-        setPostsLoading(true);
-        fetch(`${API}/posts/me`, { credentials: "include" })
-            .then(r => r.json())
-            .then(data => setMyPosts(Array.isArray(data) ? data : []))
-            .finally(() => setPostsLoading(false));
+        if (activeTab === "Posts") {
+            setPostsLoading(true);
+            fetch(`${API}/posts/me`, { credentials: "include" })
+                .then(r => r.json())
+                .then(data => setMyPosts(Array.isArray(data) ? data : []))
+                .finally(() => setPostsLoading(false));
+        } else if (activeTab === "Saved") {
+            setPostsLoading(true);
+            fetch(`${API}/posts/saved`, { credentials: "include" })
+                .then(r => r.json())
+                .then(data => setSavedPosts(Array.isArray(data) ? data : []))
+                .finally(() => setPostsLoading(false));
+        }
     }, [activeTab]);
 
     if (loading) {
@@ -289,58 +302,66 @@ export function ProfilePage() {
                     </div>
 
                     {/* Tab content */}
-                    {activeTab === "Posts" ? (
+                    {(activeTab === "Posts" || activeTab === "Saved") ? (
                         postsLoading ? (
                             <div className="py-16 flex justify-center">
                                 <div className="w-6 h-6 border-2 border-white/10 border-t-emerald-400 rounded-full animate-spin" />
                             </div>
-                        ) : myPosts.length === 0 ? (
-                            <div className="py-14 flex flex-col items-center justify-center text-center gap-3">
-                                <div className="w-16 h-16 rounded-full border-2 border-white/[0.08] flex items-center justify-center text-neutral-600">
-                                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                                        <rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" />
-                                        <path d="m21 15-5-5L5 21" />
-                                    </svg>
+                        ) : (() => {
+                            const items = activeTab === "Posts" ? myPosts : savedPosts;
+                            const emptyIcon = activeTab === "Saved"
+                                ? <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>
+                                : <><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></>;
+                            const emptyMsg = activeTab === "Saved" ? "No saved posts yet" : "No Posts yet";
+                            const emptySub = activeTab === "Saved" ? "Posts you save will appear here." : "When you share something, it'll appear here.";
+                            return items.length === 0 ? (
+                                <div className="py-14 flex flex-col items-center justify-center text-center gap-3">
+                                    <div className="w-16 h-16 rounded-full border-2 border-white/[0.08] flex items-center justify-center text-neutral-600">
+                                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">{emptyIcon}</svg>
+                                    </div>
+                                    <p className="text-neutral-400 text-[15px] font-semibold">{emptyMsg}</p>
+                                    <p className="text-neutral-600 text-[13px]">{emptySub}</p>
                                 </div>
-                                <p className="text-neutral-400 text-[15px] font-semibold">No Posts yet</p>
-                                <p className="text-neutral-600 text-[13px]">When you share something, it'll appear here.</p>
-                            </div>
-                        ) : (
-                            <div className="grid grid-cols-3 gap-0.5 mt-0.5">
-                                {myPosts.map(post => (
-                                    <button key={post.id} onClick={() => setSelectedPost(post)}
-                                        className="relative aspect-square bg-neutral-900 overflow-hidden group">
-                                        {post.mediaType === "image" && post.mediaUrl ? (
-                                            <img src={post.mediaUrl} alt="" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
-                                        ) : post.mediaType === "video" && post.mediaUrl ? (
-                                            <>
-                                                <video src={post.mediaUrl} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" muted />
-                                                <div className="absolute inset-0 flex items-center justify-center">
-                                                    <div className="w-8 h-8 rounded-full bg-black/50 backdrop-blur-sm flex items-center justify-center">
-                                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="white"><polygon points="5,3 19,12 5,21" /></svg>
+                            ) : (
+                                <div className="grid grid-cols-3 gap-0.5 mt-0.5">
+                                    {items.map(post => (
+                                        <button key={post.id} onClick={() => setSelectedPost(post as ViewerPost)}
+                                            className="relative aspect-square bg-neutral-900 overflow-hidden group">
+                                            {post.mediaType === "image" && post.mediaUrl ? (
+                                                <img src={post.mediaUrl} alt="" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                                            ) : post.mediaType === "video" && post.mediaUrl ? (
+                                                <>
+                                                    <video src={post.mediaUrl} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" muted />
+                                                    <div className="absolute inset-0 flex items-center justify-center">
+                                                        <div className="w-8 h-8 rounded-full bg-black/50 backdrop-blur-sm flex items-center justify-center">
+                                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="white"><polygon points="5,3 19,12 5,21" /></svg>
+                                                        </div>
                                                     </div>
+                                                </>
+                                            ) : (
+                                                <div className="w-full h-full flex items-center justify-center p-3 bg-white/[0.03]">
+                                                    <p className="text-neutral-400 text-[11px] line-clamp-4 text-left leading-relaxed">{post.content}</p>
                                                 </div>
-                                            </>
-                                        ) : (
-                                            <div className="w-full h-full flex items-center justify-center p-3 bg-white/[0.03]">
-                                                <p className="text-neutral-400 text-[11px] line-clamp-4 text-left leading-relaxed">{post.content}</p>
+                                            )}
+                                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3">
+                                                <span className="text-white text-[12px] font-semibold flex items-center gap-1">
+                                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="white"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" /></svg>
+                                                    {post.likesCount}
+                                                </span>
                                             </div>
-                                        )}
-                                        {/* Hover overlay */}
-                                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3">
-                                            <span className="text-white text-[12px] font-semibold flex items-center gap-1">
-                                                <svg width="14" height="14" viewBox="0 0 24 24" fill="white"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" /></svg>
-                                                {post.likesCount}
-                                            </span>
-                                        </div>
-                                    </button>
-                                ))}
-                            </div>
-                        )
+                                        </button>
+                                    ))}
+                                </div>
+                            );
+                        })()
                     ) : (
                         <div className="py-14 flex flex-col items-center justify-center text-center gap-3">
-                            <p className="text-neutral-400 text-[15px] font-semibold">No {activeTab}</p>
-                            <p className="text-neutral-600 text-[13px]">{activeTab} will appear here.</p>
+                            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 mb-2">
+                                <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"/>
+                                <span className="text-emerald-400 text-[10px] font-semibold tracking-wider uppercase">Coming Soon</span>
+                            </div>
+                            <p className="text-neutral-400 text-[15px] font-semibold">{activeTab}</p>
+                            <p className="text-neutral-600 text-[13px]">This feature is coming soon.</p>
                         </div>
                     )}
                 </div>
@@ -357,45 +378,22 @@ export function ProfilePage() {
                 )}
             </AnimatePresence>
 
-            {/* Post Detail Modal */}
+            {/* Post Viewer — same as feed */}
             <AnimatePresence>
-                {selectedPost && (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={() => setSelectedPost(null)}>
-                        <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" />
-                        <motion.div
-                            initial={{ opacity: 0, scale: 0.95 }}
-                            animate={{ opacity: 1, scale: 1 }}
-                            exit={{ opacity: 0, scale: 0.95 }}
-                            onClick={e => e.stopPropagation()}
-                            className="relative w-full max-w-lg bg-[#111] border border-white/[0.08] rounded-2xl overflow-hidden shadow-2xl"
-                        >
-                            <button onClick={() => setSelectedPost(null)}
-                                className="absolute top-3 right-3 z-10 w-8 h-8 flex items-center justify-center rounded-full bg-black/50 text-white hover:bg-white/10 transition-all">
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12" /></svg>
-                            </button>
-                            {selectedPost.mediaType === "image" && selectedPost.mediaUrl && (
-                                <img src={selectedPost.mediaUrl} alt="" className="w-full max-h-[60vh] object-contain bg-black" />
-                            )}
-                            {selectedPost.mediaType === "video" && selectedPost.mediaUrl && (
-                                <video src={selectedPost.mediaUrl} controls className="w-full max-h-[60vh] bg-black" />
-                            )}
-                            <div className="p-4">
-                                {selectedPost.content && <p className="text-white text-[14px] leading-relaxed mb-3">{selectedPost.content}</p>}
-                                {selectedPost.tags.length > 0 && (
-                                    <div className="flex flex-wrap gap-1.5 mb-3">
-                                        {selectedPost.tags.map(tag => (
-                                            <span key={tag} className="text-[12px] text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">#{tag}</span>
-                                        ))}
-                                    </div>
-                                )}
-                                <div className="flex items-center gap-2 text-neutral-500 text-[12px]">
-                                    <svg width="13" height="13" viewBox="0 0 24 24" fill="white" className="text-red-400"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" /></svg>
-                                    <span>{selectedPost.likesCount} likes</span>
-                                    <span className="ml-auto">{new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" }).format(new Date(selectedPost.createdAt))}</span>
-                                </div>
-                            </div>
-                        </motion.div>
-                    </div>
+                {selectedPost && profile && (
+                    <PostViewer
+                        post={selectedPost}
+                        myId={profile.id}
+                        onClose={() => setSelectedPost(null)}
+                        onLike={(id) => {
+                            setSelectedPost(p => p?.id === id ? { ...p, likedByMe: !p.likedByMe, likesCount: p.likedByMe ? p.likesCount - 1 : p.likesCount + 1 } : p);
+                            setMyPosts(prev => prev.map(p => p.id === id ? { ...p, likedByMe: !p.likedByMe, likesCount: p.likedByMe ? p.likesCount - 1 : p.likesCount + 1 } : p));
+                        }}
+                        onSave={(id) => {
+                            setSelectedPost(p => p?.id === id ? { ...p, savedByMe: !p.savedByMe } : p);
+                            setMyPosts(prev => prev.map(p => p.id === id ? { ...p, savedByMe: !p.savedByMe } : p));
+                        }}
+                    />
                 )}
             </AnimatePresence>
         </>

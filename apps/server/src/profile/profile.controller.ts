@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Param,
   Patch,
   Post,
   Req,
@@ -25,6 +26,11 @@ export class ProfileController {
   getMyProfile(@Req() req: Request) {
     const user = req.user as { id: string };
     return this.profileService.getProfile(user.id);
+  }
+
+  @Get(':id')
+  getUserProfile(@Param('id') id: string) {
+    return this.profileService.getProfile(id);
   }
 
   @Patch('me')
